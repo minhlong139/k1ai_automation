@@ -1,0 +1,212 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { MessageSquare, X, RefreshCw, Send, User, Bot } from "lucide-react";
+import { marked } from "marked";
+
+const OPENROUTER_API_KEY = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY;
+const MODEL = process.env.NEXT_PUBLIC_OPENROUTER_MODEL || "z-ai/glm-4.5-air:free";
+
+const SYSTEM_PROMPT = `Bạn là trợ lý ảo của chuyên gia Bùi Minh Long. Hãy sử dụng thông tin sau đây để trả lời khách hàng một cách chuyên nghiệp, lịch sự và hỗ trợ nhất:
+- Tên chuyên gia: Bùi Minh Long
+- Định vị thương hiệu: Chuyên viên tư vấn Bất Động Sản
+- Giải pháp cung cấp: Bán BĐS và Triển khai MCP server, Xây dựng hệ thống N8N AI, Đào tạo xây dựng thương hiệu cá nhân bằng AI.
+- Khóa học nổi bật: K1 AI Automation & Vibe Code (Thời gian học: 12 buổi, hình thức Online Zoom).
+- Liên hệ tư vấn: Email minhlong139@gmail.com.
+- Kinh nghiệm: 10 năm thực chiến tại Vinhomes, Đất Xanh Group. Chuyên phân khúc cao cấp, triệu đô.
+
+Nếu câu hỏi không liên quan đến Bùi Minh Long hoặc các dịch vụ của anh ấy, hãy trả lời một cách khéo léo và hướng khách hàng quay lại chủ đề chính. Trình bày câu trả lời rõ ràng, sử dụng Markdown nếu cần.`;
+
+interface Message {
+  role: "user" | "bot";
+  content: string;
+}
+
+export const Chatbot = () => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([
+    { role: "bot", content: "Xin chào! Tôi là trợ lý ảo của chuyên gia Bùi Minh Long. Tôi có thể giúp gì cho bạn hôm nay?" }
+  ]);
+  const [input, setInput] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, isTyping]);
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    setTimeout(() => {
+      setMessages([{ role: "bot", content: "Xin chào! Tôi là trợ lý ảo của chuyên gia Bùi Minh Long. Tôi có thể giúp gì cho bạn hôm nay?" }]);
+      setIsRefreshing(false);
+    }, 500);
+  };
+
+  const handleSend = async () => {
+    if (!input.trim()) return;
+
+    const userMsg: Message = { role: "user", content: input };
+    setMessages(prev => [...prev, userMsg]);
+    setInput("");
+    setIsTyping(true);
+
+    try {
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            ...messages.map(m => ({ role: m.role === "bot" ? "assistant" : "user", content: m.content })),
+            { role: "user", content: input }
+          ],
+        }),
+      });
+
+      const data = await response.json();
+      const botContent = data.choices?.[0]?.message?.content || "Xin lỗi, tôi gặp chút trục trặc. Bạn vui lòng thử lại sau nhé!";
+      
+      setMessages(prev => [...prev, { role: "bot", content: botContent }]);
+    } catch (error) {
+      console.error("Chat Error:", error);
+      setMessages(prev => [...prev, { role: "bot", content: "Có lỗi xảy ra khi kết nối tới máy chủ. Vui lòng kiểm tra kết nối mạng." }]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  return (
+    <div className="fixed bottom-6 right-6 z-[100]">
+      {/* Floating Button */}
+      <motion.button
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-14 h-14 rounded-full bg-blue-600 text-white shadow-2xl flex items-center justify-center relative overflow-hidden group"
+      >
+        <div className="absolute inset-0 bg-gradient-to-tr from-blue-700 to-purple-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+        <MessageSquare className="relative z-10" size={24} />
+      </motion.button>
+
+      {/* Chat Window */}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 20, transformOrigin: "bottom right" }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            className="absolute bottom-20 right-0 w-[350px] md:w-[400px] h-[550px] rounded-3xl overflow-hidden glass shadow-2xl border border-white/10 flex flex-col"
+          >
+            {/* Header */}
+            <div className="p-4 bg-white/5 border-b border-white/10 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <div className="w-10 h-10 rounded-full bg-blue-600/20 flex items-center justify-center">
+                    <Bot size={20} className="text-blue-500" />
+                  </div>
+                  <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-[#050505] rounded-full animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">AI Assistant</h3>
+                  <p className="text-[10px] text-green-500 font-medium uppercase tracking-widest">Online</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={handleRefresh}
+                  className={`p-2 rounded-full hover:bg-white/10 text-white/60 transition-all ${isRefreshing ? "animate-spin-once" : ""}`}
+                >
+                  <RefreshCw size={18} />
+                </button>
+                <button 
+                  onClick={() => setIsOpen(false)}
+                  className="p-2 rounded-full hover:bg-white/10 text-white/60"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Messages Area */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
+              {messages.map((msg, i) => (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  key={i}
+                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                >
+                  <div className={`flex gap-2 max-w-[85%] ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                    <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center ${msg.role === "user" ? "bg-purple-600/20" : "bg-blue-600/20"}`}>
+                      {msg.role === "user" ? <User size={16} className="text-purple-500" /> : <Bot size={16} className="text-blue-500" />}
+                    </div>
+                    <div 
+                      className={`p-3 rounded-2xl text-sm chat-markdown ${
+                        msg.role === "user" 
+                        ? "bg-blue-600 text-white rounded-tr-none" 
+                        : "bg-white/10 text-white/90 border border-white/5 rounded-tl-none"
+                      }`}
+                      dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) }}
+                    />
+                  </div>
+                </motion.div>
+              ))}
+              
+              {isTyping && (
+                <div className="flex justify-start">
+                  <div className="flex gap-2 max-w-[85%] items-start">
+                    <div className="w-8 h-8 rounded-full bg-blue-600/20 flex items-center justify-center">
+                      <Bot size={16} className="text-blue-500" />
+                    </div>
+                    <div className="p-4 rounded-2xl bg-white/10 border border-white/5 rounded-tl-none flex flex-col gap-2">
+                      <span className="text-xs text-white/40 italic">Đang nhập...</span>
+                      <div className="typing-dots">
+                        <div className="typing-dot" />
+                        <div className="typing-dot" />
+                        <div className="typing-dot" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Input Area */}
+            <div className="p-4 bg-white/5 border-t border-white/10">
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSend()}
+                  placeholder="Hỏi tôi bất cứ điều gì..."
+                  className="w-full bg-white/5 border border-white/10 rounded-full py-3 px-5 pr-12 text-sm text-white focus:outline-none focus:border-blue-500/50 transition-all placeholder:text-white/20"
+                />
+                <button
+                  onClick={handleSend}
+                  disabled={!input.trim() || isTyping}
+                  className="absolute right-2 p-2 rounded-full bg-blue-600 text-white disabled:opacity-50 disabled:bg-white/10 transition-all"
+                >
+                  <Send size={16} />
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
