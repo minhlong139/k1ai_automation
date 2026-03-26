@@ -5,8 +5,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { MessageSquare, X, RefreshCw, Send, User, Bot } from "lucide-react";
 import { marked } from "marked";
 
-const OPENROUTER_API_KEY = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY;
-const MODEL = process.env.NEXT_PUBLIC_OPENROUTER_MODEL || "z-ai/glm-4.5-air:free";
+const API_KEY = process.env.NEXT_PUBLIC_CHATBOT_API_KEY;
+const BASE_URL = process.env.NEXT_PUBLIC_CHATBOT_BASE_URL;
+const MODEL = process.env.NEXT_PUBLIC_CHATBOT_MODEL;
 
 const SYSTEM_PROMPT = `Bạn là trợ lý ảo của chuyên gia Bùi Minh Long. Hãy sử dụng thông tin sau đây để trả lời khách hàng một cách chuyên nghiệp, lịch sự và hỗ trợ nhất:
 - Tên chuyên gia: Bùi Minh Long
@@ -31,7 +32,7 @@ export const Chatbot = () => {
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -59,10 +60,10 @@ export const Chatbot = () => {
     setIsTyping(true);
 
     try {
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      const response = await fetch(`${BASE_URL}/chat/completions`, {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+          "Authorization": `Bearer ${API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -77,7 +78,7 @@ export const Chatbot = () => {
 
       const data = await response.json();
       const botContent = data.choices?.[0]?.message?.content || "Xin lỗi, tôi gặp chút trục trặc. Bạn vui lòng thử lại sau nhé!";
-      
+
       setMessages(prev => [...prev, { role: "bot", content: botContent }]);
     } catch (error) {
       console.error("Chat Error:", error);
@@ -124,13 +125,13 @@ export const Chatbot = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button 
+                <button
                   onClick={handleRefresh}
                   className={`p-2 rounded-full hover:bg-white/10 text-white/60 transition-all ${isRefreshing ? "animate-spin-once" : ""}`}
                 >
                   <RefreshCw size={18} />
                 </button>
-                <button 
+                <button
                   onClick={() => setIsOpen(false)}
                   className="p-2 rounded-full hover:bg-white/10 text-white/60"
                 >
@@ -152,18 +153,17 @@ export const Chatbot = () => {
                     <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center ${msg.role === "user" ? "bg-purple-600/20" : "bg-blue-600/20"}`}>
                       {msg.role === "user" ? <User size={16} className="text-purple-500" /> : <Bot size={16} className="text-blue-500" />}
                     </div>
-                    <div 
-                      className={`p-3 rounded-2xl text-sm chat-markdown ${
-                        msg.role === "user" 
-                        ? "bg-blue-600 text-white rounded-tr-none" 
+                    <div
+                      className={`p-3 rounded-2xl text-sm chat-markdown ${msg.role === "user"
+                        ? "bg-blue-600 text-white rounded-tr-none"
                         : "bg-white/10 text-white/90 border border-white/5 rounded-tl-none"
-                      }`}
+                        }`}
                       dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) }}
                     />
                   </div>
                 </motion.div>
               ))}
-              
+
               {isTyping && (
                 <div className="flex justify-start">
                   <div className="flex gap-2 max-w-[85%] items-start">

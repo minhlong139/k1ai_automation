@@ -16,3 +16,4 @@ chatbot_data.txt
 next-env.d.ts
 package-lock.json
 specs/
+.env*.local
