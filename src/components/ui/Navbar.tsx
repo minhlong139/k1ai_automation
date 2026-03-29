@@ -32,7 +32,7 @@ export const Navbar = () => {
           </a>
 
           {/* Desktop Nav */}
-          <div className="hidden md:flex items-center gap-8" style={{ display: typeof window !== 'undefined' && window.innerWidth < 768 ? 'none' : undefined }}>
+          <div className="hidden md:flex items-center gap-8">
             {navLinks.map((link) => (
               <a
                 key={link.name}

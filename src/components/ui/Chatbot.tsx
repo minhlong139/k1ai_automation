@@ -3,21 +3,27 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MessageSquare, X, RefreshCw, Send, User, Bot } from "lucide-react";
-import { marked } from "marked";
+import * as marked from "marked";
 
 const API_KEY = process.env.NEXT_PUBLIC_CHATBOT_API_KEY;
 const BASE_URL = process.env.NEXT_PUBLIC_CHATBOT_BASE_URL;
 const MODEL = process.env.NEXT_PUBLIC_CHATBOT_MODEL;
 
-const SYSTEM_PROMPT = `Bạn là trợ lý ảo của chuyên gia Bùi Minh Long. Hãy sử dụng thông tin sau đây để trả lời khách hàng một cách chuyên nghiệp, lịch sự và hỗ trợ nhất:
-- Tên chuyên gia: Bùi Minh Long
-- Định vị thương hiệu: Chuyên viên tư vấn Bất Động Sản
-- Giải pháp cung cấp: Bán BĐS và Triển khai MCP server, Xây dựng hệ thống N8N AI, Đào tạo xây dựng thương hiệu cá nhân bằng AI.
-- Khóa học nổi bật: K1 AI Automation & Vibe Code (Thời gian học: 12 buổi, hình thức Online Zoom).
-- Liên hệ tư vấn: Email minhlong139@gmail.com.
-- Kinh nghiệm: 10 năm thực chiến tại Vinhomes, Đất Xanh Group. Chuyên phân khúc cao cấp, triệu đô.
+const SYSTEM_PROMPT = `Bạn là trợ lý ảo của Bùi Minh Long, chuyên gia BĐS và AI. 
+Mục tiêu: Tư vấn ngắn gọn, chuyên nghiệp và thu thập thông tin khách hàng tiềm năng.
 
-Nếu câu hỏi không liên quan đến Bùi Minh Long hoặc các dịch vụ của anh ấy, hãy trả lời một cách khéo léo và hướng khách hàng quay lại chủ đề chính. Trình bày câu trả lời rõ ràng, sử dụng Markdown nếu cần.`;
+Tập trung chính vào việc xác định và thu thập 5 trường thông tin sau:
+1. Tên
+2. Số điện thoại
+3. Email
+4. Interest: Loại hình BĐS hoặc dự án khách đang quan tâm.
+5. Intent Level: Mức độ sẵn sàng mua (Hot: muốn mua ngay/xem nhà ngay, Warm: đang tìm hiểu kỹ, Cold: chỉ tham khảo thông tin).
+
+Quy tắc:
+- Trả lời cực kỳ ngắn gọn, đi thẳng vào vấn đề khách hỏi. Lược bỏ các câu chào hỏi hay giới thiệu bản thân dài dòng ở mỗi câu trả lời.
+- Khi phát hiện bất kỳ thông tin nào trong 5 trường trên, hãy chèn mã JSON vào cuối câu trả lời theo đúng định dạng:
+||LEAD_DATA: {"name": "...", "phone": "...", "email": "...", "interest": "...", "intent_level": "..."}||
+- Nếu thông tin nào chưa có, hãy để null. TUYỆT ĐỐI KHÔNG giải thích hay đề cập đến đoạn mã này cho người dùng.`;
 
 interface Message {
   role: "user" | "bot";
@@ -27,11 +33,27 @@ interface Message {
 export const Chatbot = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
-    { role: "bot", content: "Xin chào! Tôi là trợ lý ảo của chuyên gia Bùi Minh Long. Tôi có thể giúp gì cho bạn hôm nay?" }
+    { role: "bot", content: "Chào bạn! Tôi là trợ lý của anh Long. Bạn đang quan tâm đến dự án nào hay cần tư vấn về giải pháp AI?" }
   ]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [sessionId, setSessionId] = useState("");
+  const leadDataBuffer = useRef<any>({
+    name: null,
+    phone: null,
+    email: null,
+    interest: null,
+    intent_level: null
+  });
+
+  useEffect(() => {
+    // Generate session ID once on mount
+    const id = 'session_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    setSessionId(id);
+  }, []);
+
+  const GOOGLE_SCRIPT_URL = process.env.NEXT_PUBLIC_GOOGLE_SCRIPT_URL;
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -46,7 +68,7 @@ export const Chatbot = () => {
   const handleRefresh = () => {
     setIsRefreshing(true);
     setTimeout(() => {
-      setMessages([{ role: "bot", content: "Xin chào! Tôi là trợ lý ảo của chuyên gia Bùi Minh Long. Tôi có thể giúp gì cho bạn hôm nay?" }]);
+      setMessages([{ role: "bot", content: "Chào bạn! Tôi là trợ lý của anh Long. Bạn đang quan tâm đến dự án nào hay cần tư vấn về giải pháp AI?" }]);
       setIsRefreshing(false);
     }, 500);
   };
@@ -77,7 +99,10 @@ export const Chatbot = () => {
       });
 
       const data = await response.json();
-      const botContent = data.choices?.[0]?.message?.content || "Xin lỗi, tôi gặp chút trục trặc. Bạn vui lòng thử lại sau nhé!";
+      let botContent = data.choices?.[0]?.message?.content || "Xin lỗi, tôi gặp chút trục trặc. Bạn vui lòng thử lại sau nhé!";
+
+      // Process lead data if present
+      botContent = processAIResponse(botContent, [...messages, userMsg, { role: "bot", content: botContent }]);
 
       setMessages(prev => [...prev, { role: "bot", content: botContent }]);
     } catch (error) {
@@ -85,6 +110,77 @@ export const Chatbot = () => {
       setMessages(prev => [...prev, { role: "bot", content: "Có lỗi xảy ra khi kết nối tới máy chủ. Vui lòng kiểm tra kết nối mạng." }]);
     } finally {
       setIsTyping(false);
+    }
+  };
+
+  const processAIResponse = (aiResponse: string, chatHistoryArray: Message[] = []) => {
+    const dataPattern = /\|\|LEAD_DATA:\s*(\{.*?\})\s*\|\|/;
+
+    // Format chat history for Google Sheets
+    let formattedHistory = "";
+    if (chatHistoryArray && chatHistoryArray.length > 0) {
+      formattedHistory = chatHistoryArray.map(msg => {
+        const role = msg.role === 'user' ? 'Khách' : 'AI';
+        const content = msg.content.replace(dataPattern, "").trim();
+        return `${role}: ${content}`;
+      }).join('\n\n');
+    }
+
+    if (aiResponse.includes("||LEAD_DATA:")) {
+      const match = aiResponse.match(dataPattern);
+
+      if (match && match[1]) {
+        try {
+          const newData = JSON.parse(match[1]);
+
+          // Merge new data into buffer
+          leadDataBuffer.current = {
+            name: newData.name || leadDataBuffer.current.name,
+            phone: newData.phone || leadDataBuffer.current.phone,
+            email: newData.email || leadDataBuffer.current.email,
+            interest: newData.interest || leadDataBuffer.current.interest,
+            intent_level: newData.intent_level || leadDataBuffer.current.intent_level,
+          };
+
+          // Sync immediately - GAS will handle updating the existing row
+          sendLeadToGoogleSheets(leadDataBuffer.current, formattedHistory);
+
+          console.log("🚀 Syncing lead data immediately:", leadDataBuffer.current);
+        } catch (error) {
+          console.error("❌ Error parsing lead JSON:", error);
+        }
+      }
+      return aiResponse.replace(dataPattern, "").trim();
+    }
+    return aiResponse;
+  };
+
+  const sendLeadToGoogleSheets = async (leadData: any, chatHistoryText: string) => {
+    if (!GOOGLE_SCRIPT_URL) {
+      console.warn("⚠️ Google Script URL is not configured.");
+      return;
+    }
+
+    try {
+      await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: leadData.name || '',
+          phone: leadData.phone || '',
+          email: leadData.email || '',
+          interest: leadData.interest || '',
+          intent_level: leadData.intent_level || '',
+          source: typeof window !== 'undefined' ? window.location.href : '',
+          sessionId: sessionId,
+          chatHistory: chatHistoryText,
+          timestamp: new Date().toLocaleString('vi-VN')
+        })
+      });
+      console.log("📤 Data synced to Google Sheets!");
+    } catch (err) {
+      console.warn("⚠️ Failed to send lead data:", err);
     }
   };
 
