@@ -117,8 +117,8 @@ export const Chatbot = () => {
   const isValidVietnamesePhone = (phone: string) => {
     // Loại bỏ các ký tự không phải số
     const cleaned = phone.replace(/\D/g, '');
-    // Regex cho SĐT VN: 10 chữ số, bắt đầu bằng 03, 05, 07, 08, 09 (hoặc 84 nếu khách dùng mã vùng)
-    return /^(0|84)(3|5|7|8|9)[0-9]{8}$/.test(cleaned);
+    // Chấp nhận 10 hoặc 11 chữ số (để linh hoạt)
+    return /^(0|84)(3|5|7|8|9)[0-9]{8,9}$/.test(cleaned);
   };
 
   const isValidEmail = (email: string) => {
