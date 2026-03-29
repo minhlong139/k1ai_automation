@@ -114,6 +114,17 @@ export const Chatbot = () => {
     }
   };
 
+  const isValidVietnamesePhone = (phone: string) => {
+    // Loại bỏ các ký tự không phải số
+    const cleaned = phone.replace(/\D/g, '');
+    // Regex cho SĐT VN: 10 chữ số, bắt đầu bằng 03, 05, 07, 08, 09 (hoặc 84 nếu khách dùng mã vùng)
+    return /^(0|84)(3|5|7|8|9)[0-9]{8}$/.test(cleaned);
+  };
+
+  const isValidEmail = (email: string) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  };
+
   const processAIResponse = (aiResponse: string, chatHistoryArray: Message[] = []) => {
     const dataPattern = /\|\|LEAD_DATA:\s*(\{.*?\})\s*\|\|/;
 
@@ -133,20 +144,26 @@ export const Chatbot = () => {
       if (match && match[1]) {
         try {
           const newData = JSON.parse(match[1]);
+          
+          // Validate dữ liệu trước khi merge
+          const validName = newData.name && newData.name !== "null" ? newData.name : leadDataBuffer.current.name;
+          const validPhone = newData.phone && isValidVietnamesePhone(newData.phone) ? newData.phone : leadDataBuffer.current.phone;
+          const validEmail = newData.email && isValidEmail(newData.email) ? newData.email : leadDataBuffer.current.email;
 
-          // Merge new data into buffer
+          // Merge data
           leadDataBuffer.current = {
-            name: newData.name || leadDataBuffer.current.name,
-            phone: newData.phone || leadDataBuffer.current.phone,
-            email: newData.email || leadDataBuffer.current.email,
+            name: validName,
+            phone: validPhone,
+            email: validEmail,
             interest: newData.interest || leadDataBuffer.current.interest,
             intent_level: newData.intent_level || leadDataBuffer.current.intent_level,
           };
 
-          // Sync immediately - GAS will handle updating the existing row
-          sendLeadToGoogleSheets(leadDataBuffer.current, formattedHistory);
-
-          console.log("🚀 Syncing lead data immediately:", leadDataBuffer.current);
+          // Chỉ sync lên Sheet nếu có ít nhất 1 thông tin hợp lệ
+          if (validName || validPhone || validEmail) {
+            sendLeadToGoogleSheets(leadDataBuffer.current, formattedHistory);
+            console.log("🚀 Syncing valid lead data:", leadDataBuffer.current);
+          }
         } catch (error) {
           console.error("❌ Error parsing lead JSON:", error);
         }
@@ -163,13 +180,16 @@ export const Chatbot = () => {
     }
 
     try {
+      // Ép kiểu Số điện thoại sang String bằng cách thêm dấu ' ở đầu nếu cần thiết
+      const phoneString = leadData.phone ? (leadData.phone.toString().startsWith("'") ? leadData.phone : "'" + leadData.phone) : '';
+
       await fetch(GOOGLE_SCRIPT_URL, {
         method: 'POST',
         mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: leadData.name || '',
-          phone: leadData.phone || '',
+          phone: phoneString,
           email: leadData.email || '',
           interest: leadData.interest || '',
           intent_level: leadData.intent_level || '',
